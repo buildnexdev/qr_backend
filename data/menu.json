@@ -1,0 +1,7 @@
+[
+  { "id": 1, "name": "Truffle Wagyu Burger", "price": 18.99, "category": "Main", "description": "Premium wagyu beef, truffle aioli, and artisanal brioche.", "image": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&q=80" },
+  { "id": 2, "name": "Burrata Pizza", "price": 16.50, "category": "Main", "description": "Creamy burrata, heirloom cherry tomatoes, and fresh pesto.", "image": "https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=500&q=80" },
+  { "id": 3, "name": "Kale & Avocado Caesar", "price": 12.99, "category": "Starters", "description": "Baby kale, ripe avocado, sourdough croutons, pamasen.", "image": "https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=500&q=80" },
+  { "id": 4, "name": "Signature Iced Latte", "price": 5.50, "category": "Beverages", "description": "Double shot arabica, oat milk, and vanilla bean syrup.", "image": "https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=500&q=80" },
+  { "id": 5, "name": "Deconstructed Chocolate", "price": 9.99, "category": "Desserts", "description": "70% dark chocolate mousse, sea salt, and gold leaf.", "image": "https://images.unsplash.com/photo-1624353339193-2947115a3c9b?w=500&q=80" }
+]

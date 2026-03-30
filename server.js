@@ -1,12 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+import pool from './db.js';
+import authRoutes from './src/routes/authRoutes.js';
+import tableRoutes from './src/routes/tableRoutes.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -14,93 +14,120 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(bodyParser.json());
 
-const MENU_FILE = path.join(__dirname, 'data', 'menu.json');
-const TABLES_FILE = path.join(__dirname, 'data', 'tables.json');
-const ORDERS_FILE = path.join(__dirname, 'data', 'orders.json');
+// --- Modular Routes ---
+app.use('/api', authRoutes); // This will handle /api/login
+app.use('/api/tables', tableRoutes);
 
-// Ensure data files exist
-async function ensureDataFiles() {
-  try { await fs.access(MENU_FILE); } catch { await fs.writeFile(MENU_FILE, '[]'); }
-  try { await fs.access(TABLES_FILE); } catch { await fs.writeFile(TABLES_FILE, '[]'); }
-  try { await fs.access(ORDERS_FILE); } catch { await fs.writeFile(ORDERS_FILE, '[]'); }
-}
-ensureDataFiles();
+// --- Menu Routes ---
 
-// Menu Routes
+// Get all menu items
 app.get('/api/menu', async (req, res) => {
   try {
-    const data = await fs.readFile(MENU_FILE, 'utf8');
-    res.json(JSON.parse(data));
+    const [rows] = await pool.query('SELECT * FROM menu ORDER BY category, name');
+    res.json(rows);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to read menu data' });
+    console.error('Error fetching menu:', error);
+    res.status(500).json({ error: 'Failed to fetch menu data' });
   }
 });
 
+// Add a new menu item
 app.post('/api/menu', async (req, res) => {
   try {
-    await fs.writeFile(MENU_FILE, JSON.stringify(req.body, null, 2));
-    res.json({ message: 'Menu updated successfully' });
+    const { name, price, category, description, image } = req.body;
+    const [result] = await pool.query(
+      'INSERT INTO menu (name, price, category, description, image) VALUES (?, ?, ?, ?, ?)',
+      [name, price, category, description, image]
+    );
+    res.json({ id: result.insertId, message: 'Menu item added' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update menu data' });
+    console.error('Error adding menu item:', error);
+    res.status(500).json({ error: 'Failed to add menu item' });
   }
 });
 
-// Tables Routes
-app.get('/api/tables', async (req, res) => {
+// Update a menu item
+app.put('/api/menu/:id', async (req, res) => {
   try {
-    const data = await fs.readFile(TABLES_FILE, 'utf8');
-    res.json(JSON.parse(data));
+    const { id } = req.params;
+    const { name, price, category, description, image, is_available } = req.body;
+    await pool.query(
+      'UPDATE menu SET name = ?, price = ?, category = ?, description = ?, image = ?, is_available = ? WHERE id = ?',
+      [name, price, category, description, image, is_available, id]
+    );
+    res.json({ message: 'Menu item updated' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to read tables data' });
+    console.error('Error updating menu item:', error);
+    res.status(500).json({ error: 'Failed to update menu item' });
   }
 });
 
-app.post('/api/tables', async (req, res) => {
-  try {
-    await fs.writeFile(TABLES_FILE, JSON.stringify(req.body, null, 2));
-    res.json({ message: 'Tables updated successfully' });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update tables data' });
-  }
-});
+// --- Orders Routes ---
 
-// Orders Routes
+// Get all orders with items
 app.get('/api/orders', async (req, res) => {
   try {
-    const data = await fs.readFile(ORDERS_FILE, 'utf8');
-    res.json(JSON.parse(data));
+    const [orders] = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
+    
+    // For each order, fetch its items
+    const ordersWithItems = await Promise.all(orders.map(async (order) => {
+      const [items] = await pool.query(
+        'SELECT oi.*, m.name, m.image FROM order_items oi JOIN menu m ON oi.menu_id = m.id WHERE oi.order_id = ?',
+        [order.id]
+      );
+      return { ...order, items };
+    }));
+    
+    res.json(ordersWithItems);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to read orders data' });
+    console.error('Error fetching orders:', error);
+    res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
 
+// Place a new order
 app.post('/api/orders', async (req, res) => {
+  const connection = await pool.getConnection();
   try {
-    const data = await fs.readFile(ORDERS_FILE, 'utf8');
-    const orders = JSON.parse(data);
-    const newOrder = {
-      ...req.body,
-      id: Date.now(),
-      timestamp: new Date().toISOString()
-    };
-    orders.push(newOrder);
-    await fs.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2));
-    res.json(newOrder);
+    await connection.beginTransaction();
+
+    const { customerName, tableId, items, total } = req.body;
+
+    // 1. Insert order
+    const [orderResult] = await connection.query(
+      'INSERT INTO orders (customer_name, table_id, total_amount, status) VALUES (?, ?, ?, ?)',
+      [customerName, tableId === 'General' ? null : tableId, total, 'Pending']
+    );
+    const orderId = orderResult.insertId;
+
+    // 2. Insert order items
+    for (const item of items) {
+      await connection.query(
+        'INSERT INTO order_items (order_id, menu_id, quantity, price_at_time) VALUES (?, ?, ?, ?)',
+        [orderId, item.id, item.quantity, item.price]
+      );
+    }
+
+    await connection.commit();
+    res.json({ id: orderId, message: 'Order placed successfully' });
   } catch (error) {
+    await connection.rollback();
+    console.error('Error placing order:', error);
     res.status(500).json({ error: 'Failed to place order' });
+  } finally {
+    connection.release();
   }
 });
 
+// Update order status
 app.post('/api/orders/update-status', async (req, res) => {
   try {
     const { orderId, status } = req.body;
-    const data = await fs.readFile(ORDERS_FILE, 'utf8');
-    const orders = JSON.parse(data);
-    const updatedOrders = orders.map((o) => o.id === orderId ? { ...o, status } : o);
-    await fs.writeFile(ORDERS_FILE, JSON.stringify(updatedOrders, null, 2));
+    await pool.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
     res.json({ message: 'Order status updated' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update order status' });
+    console.error('Error updating status:', error);
+    res.status(500).json({ error: 'Failed to update status' });
   }
 });
 

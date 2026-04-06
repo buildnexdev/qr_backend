@@ -5,18 +5,43 @@ import dotenv from 'dotenv';
 import pool from './db.js';
 import authRoutes from './src/routes/authRoutes.js';
 import tableRoutes from './src/routes/tableRoutes.js';
+import branchRoutes from './src/routes/branchRoutes.js';
+import categoryRoutes from './src/routes/categoryRoutes.js';
+import staffRoutes from './src/routes/staffRoutes.js';
+import registerRoutes from './src/routes/registerRoutes.js';
+import stockRoutes from './src/routes/stockRoutes.js';
 
 dotenv.config();
+
+function mapMenuRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    price: Number(row.price),
+    category: row.category,
+    description: row.description || '',
+    image: row.image || '',
+    status: Boolean(row.is_available),
+    rate: row.rating != null ? Number(row.rating) : undefined,
+  };
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '15mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '15mb' }));
 
 // --- Modular Routes ---
 app.use('/api', authRoutes); // This will handle /api/login
 app.use('/api/tables', tableRoutes);
+app.use('/api/branches', branchRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/staff', staffRoutes);
+app.use('/api/register', registerRoutes);
+app.use('/api/stocks', stockRoutes);
 
 // --- Menu Routes ---
 
@@ -24,7 +49,7 @@ app.use('/api/tables', tableRoutes);
 app.get('/api/menu', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM menu ORDER BY category, name');
-    res.json(rows);
+    res.json(rows.map(mapMenuRow));
   } catch (error) {
     console.error('Error fetching menu:', error);
     res.status(500).json({ error: 'Failed to fetch menu data' });
@@ -34,12 +59,16 @@ app.get('/api/menu', async (req, res) => {
 // Add a new menu item
 app.post('/api/menu', async (req, res) => {
   try {
-    const { name, price, category, description, image } = req.body;
+    const { name, price, category, description, image, status, rate } = req.body;
+    const is_available = status !== undefined ? Boolean(status) : true;
+    const rating =
+      rate != null && rate !== '' && !Number.isNaN(parseFloat(rate)) ? parseFloat(rate) : null;
     const [result] = await pool.query(
-      'INSERT INTO menu (name, price, category, description, image) VALUES (?, ?, ?, ?, ?)',
-      [name, price, category, description, image]
+      'INSERT INTO menu (name, price, category, description, image, is_available, rating) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [name, price, category, description, image || '', is_available ? 1 : 0, rating]
     );
-    res.json({ id: result.insertId, message: 'Menu item added' });
+    const [inserted] = await pool.query('SELECT * FROM menu WHERE id = ?', [result.insertId]);
+    res.status(201).json(mapMenuRow(inserted[0]));
   } catch (error) {
     console.error('Error adding menu item:', error);
     res.status(500).json({ error: 'Failed to add menu item' });
@@ -50,15 +79,42 @@ app.post('/api/menu', async (req, res) => {
 app.put('/api/menu/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, price, category, description, image, is_available } = req.body;
-    await pool.query(
-      'UPDATE menu SET name = ?, price = ?, category = ?, description = ?, image = ?, is_available = ? WHERE id = ?',
-      [name, price, category, description, image, is_available, id]
+    const { name, price, category, description, image, is_available, status, rate } = req.body;
+    const avail =
+      status !== undefined
+        ? Boolean(status)
+        : is_available !== undefined
+          ? Boolean(is_available)
+          : true;
+    const rating =
+      rate != null && rate !== '' && !Number.isNaN(parseFloat(rate)) ? parseFloat(rate) : null;
+    const [result] = await pool.query(
+      'UPDATE menu SET name = ?, price = ?, category = ?, description = ?, image = ?, is_available = ?, rating = ? WHERE id = ?',
+      [name, price, category, description, image || '', avail ? 1 : 0, rating, id]
     );
-    res.json({ message: 'Menu item updated' });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Menu item not found' });
+    }
+    const [updated] = await pool.query('SELECT * FROM menu WHERE id = ?', [id]);
+    res.json(mapMenuRow(updated[0]));
   } catch (error) {
     console.error('Error updating menu item:', error);
     res.status(500).json({ error: 'Failed to update menu item' });
+  }
+});
+
+// Delete a menu item
+app.delete('/api/menu/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [result] = await pool.query('DELETE FROM menu WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Menu item not found' });
+    }
+    res.json({ message: 'Menu item deleted' });
+  } catch (error) {
+    console.error('Error deleting menu item:', error);
+    res.status(500).json({ error: 'Failed to delete menu item' });
   }
 });
 
@@ -72,10 +128,18 @@ app.get('/api/orders', async (req, res) => {
     // For each order, fetch its items
     const ordersWithItems = await Promise.all(orders.map(async (order) => {
       const [items] = await pool.query(
-        'SELECT oi.*, m.name, m.image FROM order_items oi JOIN menu m ON oi.menu_id = m.id WHERE oi.order_id = ?',
+        'SELECT oi.*, oi.price_at_time AS price, m.name, m.image FROM order_items oi JOIN menu m ON oi.menu_id = m.id WHERE oi.order_id = ?',
         [order.id]
       );
-      return { ...order, items };
+      return {
+        id: order.id,
+        customerName: order.customer_name,
+        tableId: order.table_id,
+        total: order.total_amount,
+        status: order.status,
+        timestamp: order.created_at,
+        items
+      };
     }));
     
     res.json(ordersWithItems);
@@ -109,7 +173,16 @@ app.post('/api/orders', async (req, res) => {
     }
 
     await connection.commit();
-    res.json({ id: orderId, message: 'Order placed successfully' });
+    res.json({
+      id: orderId,
+      message: 'Order placed successfully',
+      customerName,
+      tableId,
+      items,
+      total,
+      status: 'Pending',
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
     await connection.rollback();
     console.error('Error placing order:', error);

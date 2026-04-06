@@ -29,7 +29,13 @@ class TableController {
       }
 
       const insertId = await TableModel.create(name);
-      res.json({ id: insertId, message: 'Table added' });
+      const row = await TableModel.getById(insertId);
+      res.status(201).json({
+        id: row.id,
+        name: row.name,
+        status: row.status,
+        message: 'Table added',
+      });
     } catch (error) {
       console.error('Error adding table:', error);
       res.status(500).json({ error: 'Failed to add table' });

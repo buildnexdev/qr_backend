@@ -5,7 +5,15 @@ USE qr_ordering;
 CREATE TABLE IF NOT EXISTS tables (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    table_code VARCHAR(32) NULL,
+    capacity INT UNSIGNED NOT NULL DEFAULT 4,
+    branch_id INT NULL,
+    floor_section VARCHAR(128) NULL,
+    qr_enabled TINYINT(1) NOT NULL DEFAULT 1,
+    self_ordering TINYINT(1) NOT NULL DEFAULT 1,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
     status ENUM('Available', 'Occupied', 'Reserved') DEFAULT 'Available',
+    occupied_since DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -20,17 +28,19 @@ CREATE TABLE IF NOT EXISTS menu (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     price DECIMAL(10, 2) NOT NULL,
-    category VARCHAR(255),
+    category VARCHAR(512),
     description TEXT,
     image LONGTEXT,
     is_available BOOLEAN DEFAULT TRUE,
     rating DECIMAL(3, 1) NULL,
+    item_code VARCHAR(64) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Rich categories for admin (menu.category name should match where used)
 CREATE TABLE IF NOT EXISTS menu_categories (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    code INT UNSIGNED NOT NULL,
     name VARCHAR(255) NOT NULL UNIQUE,
     subtitle VARCHAR(255),
     description TEXT,
@@ -38,7 +48,8 @@ CREATE TABLE IF NOT EXISTS menu_categories (
     status BOOLEAN DEFAULT TRUE,
     tags VARCHAR(512),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_menu_categories_code (code)
 );
 
 -- Staff records (separate from login users)
@@ -145,6 +156,7 @@ ALTER TABLE menu MODIFY COLUMN image LONGTEXT;
 
 CREATE TABLE IF NOT EXISTS menu_categories (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    code INT UNSIGNED NOT NULL,
     name VARCHAR(255) NOT NULL UNIQUE,
     subtitle VARCHAR(255),
     description TEXT,
@@ -152,7 +164,8 @@ CREATE TABLE IF NOT EXISTS menu_categories (
     status BOOLEAN DEFAULT TRUE,
     tags VARCHAR(512),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_menu_categories_code (code)
 );
 
 CREATE TABLE IF NOT EXISTS staff (

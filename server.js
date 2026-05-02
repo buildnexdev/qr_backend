@@ -27,7 +27,20 @@ function mapMenuRow(row) {
     image: row.image || '',
     status: Boolean(row.is_available),
     rate: row.rating != null ? Number(row.rating) : undefined,
+    code: row.item_code != null && row.item_code !== '' ? String(row.item_code) : undefined,
   };
+}
+
+/** Normalize category for DB: comma-separated names from multi-select or legacy single string */
+function normalizeMenuCategories(body) {
+  if (Array.isArray(body.categories) && body.categories.length) {
+    return body.categories
+      .map((c) => String(c).trim())
+      .filter(Boolean)
+      .join(', ');
+  }
+  if (body.category != null) return String(body.category);
+  return '';
 }
 
 const app = express();
@@ -61,16 +74,30 @@ app.get('/api/menu', async (req, res) => {
   }
 });
 
+// Get one menu item by id
+app.get('/api/menu/:id', async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM menu WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Menu item not found' });
+    res.json(mapMenuRow(rows[0]));
+  } catch (error) {
+    console.error('Error fetching menu item:', error);
+    res.status(500).json({ error: 'Failed to fetch menu item' });
+  }
+});
+
 // Add a new menu item
 app.post('/api/menu', async (req, res) => {
   try {
-    const { name, price, category, description, image, status, rate } = req.body;
+    const { name, price, description, image, status, rate, code } = req.body;
+    const category = normalizeMenuCategories(req.body);
+    const item_code = code != null && String(code).trim() !== '' ? String(code).trim() : null;
     const is_available = status !== undefined ? Boolean(status) : true;
     const rating =
       rate != null && rate !== '' && !Number.isNaN(parseFloat(rate)) ? parseFloat(rate) : null;
     const [result] = await pool.query(
-      'INSERT INTO menu (name, price, category, description, image, is_available, rating) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [name, price, category, description, image || '', is_available ? 1 : 0, rating]
+      'INSERT INTO menu (name, price, category, description, image, is_available, rating, item_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [name, price, category, description, image || '', is_available ? 1 : 0, rating, item_code]
     );
     const [inserted] = await pool.query('SELECT * FROM menu WHERE id = ?', [result.insertId]);
     res.status(201).json(mapMenuRow(inserted[0]));
@@ -84,7 +111,9 @@ app.post('/api/menu', async (req, res) => {
 app.put('/api/menu/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, price, category, description, image, is_available, status, rate } = req.body;
+    const { name, price, description, image, is_available, status, rate, code } = req.body;
+    const category = normalizeMenuCategories(req.body);
+    const item_code = code != null && String(code).trim() !== '' ? String(code).trim() : null;
     const avail =
       status !== undefined
         ? Boolean(status)
@@ -94,8 +123,8 @@ app.put('/api/menu/:id', async (req, res) => {
     const rating =
       rate != null && rate !== '' && !Number.isNaN(parseFloat(rate)) ? parseFloat(rate) : null;
     const [result] = await pool.query(
-      'UPDATE menu SET name = ?, price = ?, category = ?, description = ?, image = ?, is_available = ?, rating = ? WHERE id = ?',
-      [name, price, category, description, image || '', avail ? 1 : 0, rating, id]
+      'UPDATE menu SET name = ?, price = ?, category = ?, description = ?, image = ?, is_available = ?, rating = ?, item_code = ? WHERE id = ?',
+      [name, price, category, description, image || '', avail ? 1 : 0, rating, item_code, id]
     );
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Menu item not found' });

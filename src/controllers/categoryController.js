@@ -1,6 +1,17 @@
 import CategoryModel from '../models/categoryModel.js';
 
 class CategoryController {
+  /** Next `code` value that will be used on POST create (MAX(code)+1). */
+  static async nextCode(req, res) {
+    try {
+      const nextCode = await CategoryModel.getNextCode();
+      res.json({ nextCode });
+    } catch (error) {
+      console.error('Error resolving next category code:', error);
+      res.status(500).json({ error: 'Failed to resolve next category code' });
+    }
+  }
+
   static async list(req, res) {
     try {
       res.json(await CategoryModel.getAll());
@@ -23,24 +34,25 @@ class CategoryController {
 
   static async create(req, res) {
     try {
-      const { name, subtitle, description, displayOrder, status, tags } = req.body;
+      const { name, description } = req.body;
       if (!name || !String(name).trim()) {
         return res.status(400).json({ error: 'Name is required' });
       }
-      const order = displayOrder !== undefined && displayOrder !== '' ? parseInt(String(displayOrder), 10) || 0 : 0;
       const insertId = await CategoryModel.create({
         name: String(name).trim(),
-        subtitle: subtitle || '',
-        description: description || '',
-        displayOrder: order,
-        status: status !== undefined ? Boolean(status) : true,
-        tags: Array.isArray(tags) ? tags : [],
+        description: description != null ? String(description).trim() : '',
       });
       const row = await CategoryModel.getById(insertId);
       res.status(201).json(row);
     } catch (error) {
       if (error.code === 'ER_DUP_ENTRY') {
         return res.status(409).json({ error: 'Category name already exists' });
+      }
+      if (error.code === 'ER_BAD_FIELD_ERROR' && String(error.sqlMessage || '').includes('code')) {
+        return res.status(500).json({
+          error:
+            'Database missing category code column. Run migrations/add_menu_category_code.sql on your database.',
+        });
       }
       console.error('Error creating category:', error);
       res.status(500).json({ error: 'Failed to create category' });
@@ -50,18 +62,13 @@ class CategoryController {
   static async update(req, res) {
     try {
       const { id } = req.params;
-      const { name, subtitle, description, displayOrder, status, tags } = req.body;
+      const { name, description } = req.body;
       if (!name || !String(name).trim()) {
         return res.status(400).json({ error: 'Name is required' });
       }
-      const order = displayOrder !== undefined && displayOrder !== '' ? parseInt(String(displayOrder), 10) || 0 : 0;
-      const affected = await CategoryModel.update(id, {
+      const affected = await CategoryModel.updateBasics(id, {
         name: String(name).trim(),
-        subtitle: subtitle || '',
-        description: description || '',
-        displayOrder: order,
-        status: status !== undefined ? Boolean(status) : true,
-        tags: Array.isArray(tags) ? tags : [],
+        description: description != null ? String(description).trim() : '',
       });
       if (!affected) return res.status(404).json({ error: 'Category not found' });
       res.json(await CategoryModel.getById(id));
@@ -71,6 +78,22 @@ class CategoryController {
       }
       console.error('Error updating category:', error);
       res.status(500).json({ error: 'Failed to update category' });
+    }
+  }
+
+  static async patchActive(req, res) {
+    try {
+      const { id } = req.params;
+      const { isActive } = req.body;
+      if (typeof isActive !== 'boolean') {
+        return res.status(400).json({ error: 'isActive (boolean) is required' });
+      }
+      const affected = await CategoryModel.setActive(id, isActive);
+      if (!affected) return res.status(404).json({ error: 'Category not found' });
+      res.json(await CategoryModel.getById(id));
+    } catch (error) {
+      console.error('Error updating category status:', error);
+      res.status(500).json({ error: 'Failed to update category status' });
     }
   }
 

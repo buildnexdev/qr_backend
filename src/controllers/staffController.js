@@ -1,5 +1,49 @@
 import StaffModel from '../models/staffModel.js';
 
+function normalizePayload(body, { requirePassword = false } = {}) {
+  const name = body.name != null ? String(body.name).trim() : '';
+  if (!name) return { error: 'Name is required' };
+  if (requirePassword) {
+    const pw = body.password != null ? String(body.password).trim() : '';
+    if (!pw) return { error: 'Password is required for new staff' };
+  }
+  return {
+    payload: {
+      name,
+      phone: body.phone,
+      email: body.email,
+      password: body.password != null ? String(body.password) : undefined,
+      role: body.role,
+      branch: body.branch,
+      qualification: body.qualification,
+      address: body.address,
+      image: body.image,
+      status: body.status !== undefined ? Boolean(body.status) : true,
+      employeeId: body.employeeId,
+      gender: body.gender,
+      dateOfBirth: body.dateOfBirth || null,
+      alternatePhone: body.alternatePhone,
+      department: body.department,
+      shiftTiming: body.shiftTiming,
+      joiningDate: body.joiningDate || null,
+      username: body.username,
+      isPublish: body.isPublish !== undefined ? Boolean(body.isPublish) : true,
+      permissionsJson:
+        typeof body.permissionsJson === 'string'
+          ? body.permissionsJson
+          : body.permissionsJson != null
+            ? JSON.stringify(body.permissionsJson)
+            : null,
+      documentsJson:
+        typeof body.documentsJson === 'string'
+          ? body.documentsJson
+          : body.documentsJson != null
+            ? JSON.stringify(body.documentsJson)
+            : null,
+    },
+  };
+}
+
 class StaffController {
   static async list(req, res) {
     try {
@@ -23,25 +67,9 @@ class StaffController {
 
   static async create(req, res) {
     try {
-      const body = req.body;
-      if (!body.name || !String(body.name).trim()) {
-        return res.status(400).json({ error: 'Name is required' });
-      }
-      if (!body.password || !String(body.password).trim()) {
-        return res.status(400).json({ error: 'Password is required for new staff' });
-      }
-      const insertId = await StaffModel.create({
-        name: String(body.name).trim(),
-        phone: body.phone,
-        email: body.email,
-        password: String(body.password),
-        role: body.role,
-        branch: body.branch,
-        qualification: body.qualification,
-        address: body.address,
-        image: body.image || null,
-        status: body.status !== undefined ? Boolean(body.status) : true,
-      });
+      const norm = normalizePayload(req.body, { requirePassword: true });
+      if (norm.error) return res.status(400).json({ error: norm.error });
+      const insertId = await StaffModel.create(norm.payload);
       res.status(201).json(await StaffModel.getById(insertId));
     } catch (error) {
       console.error('Error creating staff:', error);
@@ -52,30 +80,33 @@ class StaffController {
   static async update(req, res) {
     try {
       const { id } = req.params;
-      const body = req.body;
-      if (!body.name || !String(body.name).trim()) {
-        return res.status(400).json({ error: 'Name is required' });
-      }
+      const norm = normalizePayload(req.body, { requirePassword: false });
+      if (norm.error) return res.status(400).json({ error: norm.error });
       const existing = await StaffModel.getById(id);
       if (!existing) return res.status(404).json({ error: 'Staff not found' });
 
-      const affected = await StaffModel.update(id, {
-        name: String(body.name).trim(),
-        phone: body.phone,
-        email: body.email,
-        password: body.password && String(body.password).trim() ? String(body.password) : null,
-        role: body.role,
-        branch: body.branch,
-        qualification: body.qualification,
-        address: body.address,
-        image: body.image !== undefined ? body.image : existing.image,
-        status: body.status !== undefined ? Boolean(body.status) : true,
-      });
+      const affected = await StaffModel.update(id, norm.payload);
       if (!affected) return res.status(404).json({ error: 'Staff not found' });
       res.json(await StaffModel.getById(id));
     } catch (error) {
       console.error('Error updating staff:', error);
       res.status(500).json({ error: 'Failed to update staff' });
+    }
+  }
+
+  static async resetPassword(req, res) {
+    try {
+      const { id } = req.params;
+      const pw = req.body?.password != null ? String(req.body.password).trim() : '';
+      if (!pw) return res.status(400).json({ error: 'Password is required' });
+      const existing = await StaffModel.getById(id);
+      if (!existing) return res.status(404).json({ error: 'Staff not found' });
+      const affected = await StaffModel.updatePassword(id, pw);
+      if (!affected) return res.status(404).json({ error: 'Staff not found' });
+      res.json({ message: 'Password updated' });
+    } catch (error) {
+      console.error('Error resetting password:', error);
+      res.status(500).json({ error: 'Failed to reset password' });
     }
   }
 

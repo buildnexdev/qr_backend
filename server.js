@@ -12,6 +12,7 @@ import registerRoutes from './src/routes/registerRoutes.js';
 import stockRoutes from './src/routes/stockRoutes.js';
 import companyRoutes from './src/routes/companyRoutes.js';
 import roleRoutes from './src/routes/roleRoutes.js';
+import publicRoutes, { tableContextHandler } from './src/routes/publicRoutes.js';
 import authMiddleware from './src/middleware/authMiddleware.js';
 
 dotenv.config();
@@ -49,6 +50,10 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(bodyParser.json({ limit: '15mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '15mb' }));
+
+// Public QR / customer routes (no auth) — explicit GET so it never falls through to another /api mount
+app.get('/api/public/table-context/:companySlug/:tableKey', tableContextHandler);
+app.use('/api/public', publicRoutes);
 
 // --- Modular Routes ---
 app.use('/api', authRoutes); // This will handle /api/login

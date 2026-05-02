@@ -1,4 +1,5 @@
 import UserModel from '../models/userModel.js';
+import pool from '../../db.js';
 import jwt from 'jsonwebtoken';
 
 const SECRET_KEY = process.env.JWT_SECRET || 'your_super_secret_key_change_me';
@@ -28,6 +29,19 @@ class AuthController {
         { expiresIn: '24h' }
       );
 
+      let company_name = null;
+      if (user.companyID != null) {
+        try {
+          const [coRows] = await pool.query(
+            'SELECT company_name FROM tblCompany WHERE id = ? LIMIT 1',
+            [user.companyID]
+          );
+          if (coRows.length) company_name = coRows[0].company_name;
+        } catch {
+          company_name = null;
+        }
+      }
+
       res.json({
         success: true,
         message: 'Login successful',
@@ -38,7 +52,8 @@ class AuthController {
           role: user.role,
           companyid: user.companyID,
           branchid: user.branchID,
-          name: user.name
+          name: user.name,
+          company_name,
         }
       });
 

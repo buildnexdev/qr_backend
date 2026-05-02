@@ -10,6 +10,9 @@ import categoryRoutes from './src/routes/categoryRoutes.js';
 import staffRoutes from './src/routes/staffRoutes.js';
 import registerRoutes from './src/routes/registerRoutes.js';
 import stockRoutes from './src/routes/stockRoutes.js';
+import companyRoutes from './src/routes/companyRoutes.js';
+import roleRoutes from './src/routes/roleRoutes.js';
+import authMiddleware from './src/middleware/authMiddleware.js';
 
 dotenv.config();
 
@@ -36,12 +39,14 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '15mb' }));
 
 // --- Modular Routes ---
 app.use('/api', authRoutes); // This will handle /api/login
-app.use('/api/tables', tableRoutes);
-app.use('/api/branches', branchRoutes);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/staff', staffRoutes);
+app.use('/api/tables', authMiddleware, tableRoutes);
+app.use('/api/branches', authMiddleware, branchRoutes);
+app.use('/api/categories', authMiddleware, categoryRoutes);
+app.use('/api/staff', authMiddleware, staffRoutes);
 app.use('/api/register', registerRoutes);
-app.use('/api/stocks', stockRoutes);
+app.use('/api/stocks', authMiddleware, stockRoutes);
+app.use('/api/company', authMiddleware, companyRoutes);
+app.use('/api/roles', authMiddleware, roleRoutes);
 
 // --- Menu Routes ---
 

@@ -27,19 +27,10 @@ class BranchController {
 
   static async addBranch(req, res) {
     try {
-      const { name, code, location, pincode, manager, phone, status } = req.body;
-      if (!name || !code) {
-        return res.status(400).json({ error: 'Name and code are required' });
+      if (!req.body.branchName || !req.body.branchCode) {
+        return res.status(400).json({ error: 'Branch name and code are required' });
       }
-      const insertId = await BranchModel.create({
-        name,
-        code,
-        location,
-        pincode,
-        manager,
-        phone,
-        status: status !== undefined ? Boolean(status) : true,
-      });
+      const insertId = await BranchModel.create(req.body);
       const branch = await BranchModel.getById(insertId);
       res.status(201).json(branch);
     } catch (error) {
@@ -54,19 +45,10 @@ class BranchController {
   static async updateBranch(req, res) {
     try {
       const { id } = req.params;
-      const { name, code, location, pincode, manager, phone, status } = req.body;
-      if (!name || !code) {
-        return res.status(400).json({ error: 'Name and code are required' });
+      if (!req.body.branchName || !req.body.branchCode) {
+        return res.status(400).json({ error: 'Branch name and code are required' });
       }
-      const affected = await BranchModel.update(id, {
-        name,
-        code,
-        location,
-        pincode,
-        manager,
-        phone,
-        status: status !== undefined ? Boolean(status) : true,
-      });
+      const affected = await BranchModel.update(id, req.body);
       if (affected === 0) {
         return res.status(404).json({ error: 'Branch not found' });
       }

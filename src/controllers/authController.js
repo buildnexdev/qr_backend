@@ -1,4 +1,7 @@
 import UserModel from '../models/userModel.js';
+import jwt from 'jsonwebtoken';
+
+const SECRET_KEY = process.env.JWT_SECRET || 'your_super_secret_key_change_me';
 
 class AuthController {
   static async login(req, res) {
@@ -9,33 +12,43 @@ class AuthController {
         return res.status(400).json({ error: 'Username and password are required' });
       }
 
-      const user = await UserModel.findByUsername(username);
+      const user = await UserModel.findByPhonenumber(username);
 
       if (!user) {
-        return res.status(401).json({ error: 'Invalid username or password' });
+        return res.status(401).json({ error: 'Invalid Phonenumber' });
       }
 
-      // Simple password comparison (consistent with schema's plain text password123)
       if (user.password !== password) {
-        return res.status(401).json({ error: 'Invalid username or password' });
+        return res.status(401).json({ error: 'Invalid Password' });
       }
 
-      // Success response
+      const token = jwt.sign(
+        { id: user.id, username: user.username, role: user.role, companyID: user.companyID, branchID: user.branchID },
+        SECRET_KEY,
+        { expiresIn: '24h' }
+      );
+
       res.json({
         success: true,
         message: 'Login successful',
+        token,
         user: {
-          id: user.id,
+          userid: user.id,
           username: user.username,
-          role: user.role
+          role: user.role,
+          companyid: user.companyID,
+          branchid: user.branchID,
+          name: user.name
         }
       });
 
     } catch (error) {
-      console.error('Error during login:', error);
-      res.status(500).json({ error: 'An error occurred during login' });
+      console.error('CRITICAL LOGIN ERROR:', error);
+      res.status(500).json({ 
+        error: 'An error occurred during login',
+        details: error.message 
+      });
     }
   }
 }
-
 export default AuthController;
